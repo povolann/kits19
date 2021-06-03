@@ -16,6 +16,8 @@ from unet import UNet
 from torch.utils.tensorboard import SummaryWriter
 from utils.dataset import BasicDataset, CarvanaDataset
 from torch.utils.data import DataLoader, random_split
+from torchsummary import summary
+import hiddenlayer as hl
 
 # stamp
 now = datetime.now()
@@ -24,14 +26,12 @@ timestamp = str(now.year).zfill(4) + str(now.month).zfill(2) + str(now.day).zfil
 # constants & variables
 dirname = os.path.dirname(__file__)
 outputDir = f"models/{timestamp}"
-# dir_img = os.path.join(dirname, 'data/imgs/') # CarvanaDataset
-# dir_mask = os.path.join(dirname, 'data/masks/') # CarvanaDataset
 dir_img = os.path.join(dirname, 'data/x.npz')          # Images
 dir_mask = os.path.join(dirname, 'data/ykid.npz')        # kidney .. ykid.npz | tumor .. ytum.npz
 dir_checkpoint = os.path.join(dirname, outputDir, 'checkpoints/')
 tensorboardPath = os.path.join(dirname, outputDir, 'runs/')
 
-
+# 
 def train_net(net,
               device,
               epochs=2,
@@ -46,7 +46,8 @@ def train_net(net,
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
-    val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    val_loader   = DataLoader(val,   batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+
 
     os.makedirs(tensorboardPath, exist_ok=True)
     writer = SummaryWriter(tensorboardPath)
@@ -63,7 +64,7 @@ def train_net(net,
         Images scaling:  {img_scale}
     ''')
 
-    # optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+    # optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9) 
     # optimizer = optim.Adadelta(net.parameters(), lr=1.0, rho=0.9, eps=1e-06, weight_decay=0)
     optimizer = optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min' if net.n_classes > 1 else 'max', patience=2)
@@ -72,14 +73,21 @@ def train_net(net,
     else:
         criterion = nn.BCEWithLogitsLoss()
 
+    summary(net, (1, 512, 512))
+    # Build HiddenLayer graph
+    # hl_graph = hl.build_graph(net, torch.zeros([1, 1, 512, 512]).to(device))
+    # # Use a different color theme
+    # hl_graph.theme = hl.graph.THEMES["blue"].copy()  # Two options: basic and blue
+    # hl_graph.save(path=os.path.join(dirname, outputDir) , format="png")
+
     for epoch in range(epochs):
         net.train()
 
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
-                imgs = batch['image']
-                true_masks = batch['mask']
+                imgs = batch['image'].unsqueeze(1)
+                true_masks = batch['mask'].unsqueeze(1)
                 assert imgs.shape[1] == net.n_channels, \
                     f'Network has been defined with {net.n_channels} input channels, ' \
                     f'but loaded images have {imgs.shape[1]} channels. Please check that ' \
@@ -124,6 +132,9 @@ def train_net(net,
                         writer.add_images('masks/true', true_masks, global_step)
                         writer.add_images('masks/pred', torch.sigmoid(masks_pred) > 0.5, global_step)
 
+                    writer.add_graph(net, imgs)
+                    writer.close()
+
         if save_cp:
             try:
                 # create output dir
@@ -141,7 +152,7 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-e', '--epochs', metavar='E', type=int, default=3,
+    parser.add_argument('-e', '--epochs', metavar='E', type=int, default=5,
                         help='Number of epochs', dest='epochs')
     parser.add_argument('-b', '--batch-size', metavar='B', type=int, nargs='?', default=4,
                         help='Batch size', dest='batchsize')

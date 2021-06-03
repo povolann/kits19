@@ -12,6 +12,69 @@ from unet import UNet
 from utils.data_vis import plot_img_and_mask
 from utils.dataset import BasicDataset
 
+import gc
+import time
+
+import cv2 
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+from datetime import datetime
+from tqdm import tqdm
+
+
+# this file path
+dirname = os.path.dirname(__file__)
+modelsFolder = 'models'
+datasetFolder = 'data/test'
+outputFolder = 'predictionstest'
+
+modelsDir = os.path.join(dirname, modelsFolder)
+pathToImages = os.path.join(dirname, datasetFolder)          # Images
+
+# load cases
+cases = os.listdir(pathToImages)
+cases.sort()
+cases = cases[:1] # cases[:casesnum], for 180 32:33
+
+inputHeight = 512
+inputWidth = 512
+
+# load model
+modelPaths = os.listdir(modelsDir)
+modelPaths.sort()
+
+for modelPath in modelPaths[-2:]:
+    outputDir = os.path.join(modelsDir, modelPath , outputFolder)
+    bestModelDir = os.path.join(modelsDir, modelPath, 'checkpoints/')
+    os.chdir(bestModelDir)
+    files = filter(os.path.isfile, os.listdir(bestModelDir))
+    files = [os.path.join(bestModelDir, f) for f in files] # add path to each file
+    files.sort(key=lambda x: os.path.getmtime(x))
+    bestModel = files[-1:]
+    print(bestModel[0])
+
+    for case in cases:
+        # load data
+        imagePath = os.path.join(pathToImages, case)
+        # load img with stopwatch for info
+        stopwatch = time.time()
+        images = np.load(imagePath, None, True)
+        print(f'case {case} was loaded in {time.time() - stopwatch} seconds')
+
+        keys = images.files
+        slicenum = 40
+        keys = keys[:10] # take all -> files[:] or take 10 for example -> files[:10]
+        try:
+            # predict
+            p = {}  # predictions
+            for key in keys:
+                X = images[key]
+                
+                prediction = predict_img
+
+
+
 
 def predict_img(net,
                 full_img,
@@ -71,7 +134,7 @@ def get_args():
                         default=0.5)
     parser.add_argument('--scale', '-s', type=float,
                         help="Scale factor for the input images",
-                        default=0.5)
+                        default=1)
 
     return parser.parse_args()
 
@@ -102,7 +165,7 @@ if __name__ == "__main__":
     in_files = args.input
     out_files = get_output_filenames(args)
 
-    net = UNet(n_channels=3, n_classes=1)
+    net = UNet(n_channels=1, n_classes=1)
 
     logging.info("Loading model {}".format(args.model))
 
