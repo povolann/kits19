@@ -8,48 +8,29 @@ import logging
 import gc
 import time
 from tqdm import tqdm
+from PIL import Image
 
 
 class BasicDataset(Dataset):
     def __init__(self, imgs_dir, masks_dir, scale=1, mask_suffix=''):
         self.imgs_dir = imgs_dir
         self.masks_dir = masks_dir
+
         self.scale = scale
         self.mask_suffix = mask_suffix
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
+        self.X = None
+        self.Y = None
+        img = np.load(imgs_dir, None, True)
+        self._get_data(imgs_dir, masks_dir)
 
-        # self.ids = 
-        
-
-    def __len__(self):
-        return len(self.ids)
-
-    @classmethod
-    def preprocess(cls, pil_img, scale):
-        w, h = pil_img.size
-        newW, newH = int(scale * w), int(scale * h)
-        assert newW > 0 and newH > 0, 'Scale is too small'
-        pil_img = pil_img.resize((newW, newH))
-
-        img_nd = np.array(pil_img)
-
-        if len(img_nd.shape) == 2:
-            img_nd = np.expand_dims(img_nd, axis=2)
-
-        # HWC to CHW
-        img_trans = img_nd.transpose((2, 0, 1))
-        if img_trans.max() > 1:
-            img_trans = img_trans / 255
-
-        return img_trans
-
-    # data loading
-    def __getitem__(self, i): 
+    def _get_data(self, imgs_dir, masks_dir):
         stopwatch = time.time()
-        mask = np.load(self.masks_dir, None, True)
-        img = np.load(self.imgs_dir, None, True)
+        img = np.load(imgs_dir, None, True)
+        mask = np.load(masks_dir, None, True)
+
         startImage = 0
-        cntOfImagesFromDataset = 10000 # 16220           # you can use large number for all images like 999999
+        cntOfImagesFromDataset = 1000 # 16220           # you can use large number for all images like 999999, I think we can run again
         endImage = startImage + cntOfImagesFromDataset
 
         cherryPicking = True                             # Pick only valid images from dataset
@@ -83,30 +64,51 @@ class BasicDataset(Dataset):
 
             x.append(xarr)
             y.append(yarr)
-            pass
 
-        # concatenate selected images and masks
         print(f"Concatenation ...")
-        X = np.concatenate(x)
-        Y = np.concatenate(y)
+        self.X = np.concatenate(x)
+        self.Y = np.concatenate(y)
 
-        logging.info(f'Creating dataset with {X.shape[0]} examples')
-
-        # force clean up memory
-        del x
-        del y
-        del img
-        del mask
-        gc.collect()
-
+        logging.info(f'Creating dataset with and imgs = {len(self.X)} examples')
         logging.info(f'Data loaded in {time.time() - stopwatch} seconds')
+        
+    def __len__(self):
+        return len(self.X) # len(dataset) = 5088 for Caravana, 8646 for kits19
+
+    @classmethod
+    def preprocess(cls, np_img, scale):
+        pil_img = Image.fromarray(np.uint8(np_img[0] * 255) , 'L')
+        w, h = pil_img.size
+        newW, newH = int(scale * w), int(scale * h)
+        assert newW > 0 and newH > 0, 'Scale is too small'
+        pil_img = pil_img.resize((newW, newH))
+
+        img_nd = np.array(pil_img)
+
+        if len(img_nd.shape) == 2:
+            img_nd = np.expand_dims(img_nd, axis=2)
+
+        # HWC to CHW
+        img_trans = img_nd.transpose((2, 0, 1))
+        if img_trans.max() > 1:
+            img_trans = img_trans / 255
+
+        return img_trans
+
+    # load i-th image
+    def __getitem__(self, i):
+        X = self.X[i]
+        Y = self.Y[i]
 
         return {
             'image': torch.from_numpy(X).type(torch.FloatTensor),
             'mask': torch.from_numpy(Y).type(torch.FloatTensor)
         }
 
-
 class CarvanaDataset(BasicDataset):
     def __init__(self, imgs_dir, masks_dir, scale=1):
         super().__init__(imgs_dir, masks_dir, scale, mask_suffix='_mask')
+
+class kits19(BasicDataset):
+    def __init__(self, imgs_dir, masks_dir, scale=1):
+        super().__init__(imgs_dir, masks_dir, scale, mask_suffix='')
