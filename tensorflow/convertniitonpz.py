@@ -11,7 +11,7 @@ dirname = os.path.dirname(__file__)
 
 # constants
 dataFolder = 'data'
-outFolder = 'npz'
+outFolder = 'datanpz'
 imgCnt = 147
 
 dataPath = os.path.join(dirname, dataFolder)

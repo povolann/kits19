@@ -11,7 +11,7 @@ dirname = os.path.dirname(__file__)
 
 # constants
 dataFolder = 'test'
-outFolder = 'bordel'
+outFolder = 'testnpz'
 imgCnt = 10
 
 dataPath = os.path.join(dirname, dataFolder)
